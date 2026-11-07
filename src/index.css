@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Brand Coletta ────────────────────────── */
+  --color-brand-red: #C8102E;
+  --color-brand-red-dark: #A50E26;
+  --color-brand-red-light: #FCEEF1;
+  --color-brand-navy: #111621;
+  --color-brand-navy-light: #1C2130;
+  /* U9: il rosso brand sul navy (voce attiva del menu) era 2,88:1; questo 4,76. */
+  --color-brand-red-su-navy: #F2495F;
+
+  /* ── Accent UI (= rosso brand) ────────────── */
+  --color-accent: #C8102E;
+  --color-accent-hover: #A50E26;
+  --color-accent-light: #FCEEF1;
+
+  /* ── Superfici ────────────────────────────── */
+  --color-surface-primary: #F7F7F8;
+  --color-surface-secondary: #FFFFFF;
+  --color-surface-tertiary: #F0F1F3;
+
+  /* ── Testo ────────────────────────────────── */
+  --color-ink-primary: #111621;
+  --color-ink-secondary: #3D4252;
+  --color-ink-tertiary: #5B6478; /* U8 (revisione L15-L21): 5,25:1 su surface-tertiary, era #6B7385 a 4,21 */
+  --color-ink-disabled: #A8AFBE;
+
+  /* ── Semantici ────────────────────────────── */
+  /* U7 (revisione L15-L21): ogni coppia testo/fondo almeno 4,5:1 (test in
+     src/__tests__/contrasti.test.ts). success e warning più scuri; error resta
+     #DC2626, diverso dal rosso brand, su un fondo più chiaro. */
+  --color-success: #15803D;
+  --color-success-bg: #F0FDF4;
+  --color-warning: #B45309;
+  --color-warning-bg: #FFFBEB;
+  --color-error: #DC2626;
+  --color-error-bg: #FEF7F7;
+  /* L26 (aggiunta 4): success ed error sono per i fondi chiari; sul navy delle
+     pagine di accesso (card bg-white/[0.03] sul navy, riquadro bg-success/10 o
+     bg-error/10) davano 3,07:1 e 3,29:1. Come U9 per il rosso brand: success
+     su navy 8,85:1 sul suo riquadro (9,68 sulla card), error su navy 5,74:1
+     sul suo riquadro (6,10 sulla card). Test in contrasti.test.ts. */
+  --color-success-su-navy: #4ADE80;
+  --color-error-su-navy: #F87171;
+  /* L29: la barra della password (IndicatorePassword), dal rosso al verde:
+     error-su-navy, warning-su-navy, giallo-verde-su-navy, success-su-navy.
+     Segmenti pieni (WCAG 1.4.11, almeno 3:1) sulla card e sul segmento vuoto
+     (bg-white/15 sulla card), e l'etichetta del livello scritta nello stesso
+     colore (almeno 4,5:1 sulla card): error 6,10 e 3,81; warning 7,45 e 4,66;
+     giallo-verde 11,18 e 7,00; success 9,68 e 6,05. Test in contrasti.test.ts. */
+  --color-warning-su-navy: #FB923C;
+  --color-giallo-verde-su-navy: #A3E635;
+
+  /* ── Separatori ───────────────────────────── */
+  --color-separator: rgba(17, 22, 33, 0.10);
+  --color-separator-opaque: #E2E4E9;
+
+  /* ── Righe delle voci (L17) ───────────────── */
+  /* Un solo hover per tutte le righe di voce (Arredi, Gres, Cucine, Porte,
+     Progetto a valore) e il fondo della riga selezionata, più intenso. Sono i
+     valori che avevano Arredi (6%) e le righe scelte del Gres (11%): mai più
+     scritti a mano nei componenti. */
+  --color-hover-voce: color-mix(in oklab, var(--color-brand-red) 6%, transparent);
+  --color-voce-selezionata: color-mix(in oklab, var(--color-brand-red) 11%, transparent);
+
+  /* ── Font ──────────────────────────────────── */
+  --font-sans: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-mono: "SF Mono", "Fira Code", ui-monospace, monospace;
+
+  /* ── Border Radius ────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* ── Shadows ──────────────────────────────── */
+  --shadow-apple-sm: 0 1px 3px rgba(17, 22, 33, .06), 0 1px 2px rgba(17, 22, 33, .04);
+  --shadow-apple-md: 0 4px 16px rgba(17, 22, 33, .09), 0 2px 6px rgba(17, 22, 33, .05);
+  --shadow-apple-lg: 0 12px 40px rgba(17, 22, 33, .11), 0 4px 12px rgba(17, 22, 33, .06);
+  --shadow-apple-xl: 0 24px 64px rgba(17, 22, 33, .14), 0 8px 24px rgba(17, 22, 33, .07);
+  --shadow-red: 0 4px 20px rgba(200, 16, 46, .20);
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-primary);
+  color: var(--color-ink-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+/*
+ * La barra del preventivo, da desktop ferma in cima, scrive la sua altezza
+ * misurata in --altezza-barra (BarraPreventivo). Lo scorrimento della pagina
+ * (scrollIntoView, focus da tastiera) si ferma sotto di lei, e i riepiloghi
+ * fermi a destra le stanno sotto con il margine di prima (2rem). Su mobile la
+ * barra è in basso: qui non cambia niente. Revisione del 14/10 sulla #97,
+ * difetto 3.
+ */
+@media (width >= 48rem) {
+  html {
+    scroll-padding-top: var(--altezza-barra, 0px);
+  }
+}
+
+@utility sticky-sotto-barra {
+  position: sticky;
+  top: calc(var(--altezza-barra, 0px) + 2rem);
+}
+
+/* QtyInput stepper — all states via CSS transitions (no React class flash) */
+.qty-stepper {
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+/* Filled state (value > 0): navy bg */
+.qty-stepper[data-filled] {
+  background-color: #111621;
+  border-color: #111621;
+}
+.qty-stepper[data-filled] .qty-stepper-input {
+  color: #FFFFFF;
+}
+.qty-stepper[data-filled] .qty-stepper-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+.qty-stepper[data-filled] .qty-stepper-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+.qty-stepper[data-filled] .qty-stepper-btn:hover {
+  color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Row hover: stepper becomes navy (even when empty) */
+tr:hover .qty-stepper:not(:focus-within) {
+  background-color: #111621;
+  border-color: #111621;
+}
+tr:hover .qty-stepper:not(:focus-within) .qty-stepper-input {
+  color: #FFFFFF;
+}
+tr:hover .qty-stepper:not(:focus-within) .qty-stepper-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+tr:hover .qty-stepper:not(:focus-within) .qty-stepper-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+tr:hover .qty-stepper:not(:focus-within) .qty-stepper-btn:hover {
+  color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Glassmorphism panel — totals sidebar, modals */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(17, 22, 33, .09), 0 2px 6px rgba(17, 22, 33, .05);
+}

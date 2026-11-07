@@ -1,0 +1,176 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — i gate di casa, resi legge.
+#
+# Gli stessi passi che si fanno a mano prima di ogni commit, nello stesso
+# ordine. Qui però il merge si spegne da solo sui rossi, invece di
+# dipendere dal fatto che qualcuno si ricordi il rito.
+#
+# ── QUESTA CI È PARZIALE, E LO DICE ──────────────────────────────────────────
+#
+# Su clone pulito le suite golden si SKIPPANO, quindi il conteggio non è quello
+# del gate locale (dove gli skipped sono 0), ed è giusto così. I numeri attesi
+# stanno in un posto solo, `ATTESO` in `scripts/verifica-conteggio-ci.mjs`:
+#
+#   Le suite GOLDEN (`src/parsers/__tests__/parsers.golden.test.ts`) si
+#   auto-skippano perché le loro fixture — `src/parsers/__tests__/fixtures/` —
+#   sono i LISTINI PREZZI VERI di Antonio, e sono gitignorate (.gitignore:32).
+#   Sono dati commerciali di un cliente: non stanno in un repo finché lui non
+#   dice di sì.
+#
+# Quindi la CI NON copre:
+#   · i golden dei parser sui file reali (Rev_77 / Rev_82 marmeria, su misura,
+#     porte) — cioè la rete che pinna i prezzi del gres prima di un refactor;
+#   · le integration che leggono un workbook vero invece di uno sintetico.
+#
+# Quello che la CI copre è tutto il resto: tipi, build, engine di calcolo,
+# store, parser su workbook sintetici, validazione Zod, render, bundle.
+#
+# **Il gate COMPLETO, coi golden, resta il rito LOCALE pre-commit.**
+# Questa CI non lo sostituisce: lo affianca, e prende i casi in cui il rito
+# viene saltato.
+#
+# I numeri sono MISURATI (fixture parcheggiate, suite eseguita, fixture
+# rimesse), non stimati, e sono ASSERITI: vedi `scripts/verifica-conteggio-ci.mjs`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Token del workflow in sola lettura, dichiarato qui e non lasciato al default
+# del repo (oggi "read", ma è un'impostazione che si cambia da un'altra parte).
+# Nessun job scrive su GitHub: checkout e Sonar leggono, il deploy è di Vercel.
+# Con main non enforced e il deploy a ogni merge, un'action compromessa con un
+# token in scrittura arriverebbe in produzione (review 07/10, O13).
+permissions:
+  contents: read
+
+# Un push nuovo sulla stessa PR cancella il run vecchio: né `gate` né `sonar`
+# servono su un commit già superato, e i minuti di Actions sono una quota
+# condivisa dell'account (2.000 al mese). Il gruppo è il numero della PR.
+# Sul push a `main` non c'è PR: il gruppo diventa lo sha del commit, unico per
+# run, e `cancel-in-progress` è falso. I run su `main` non si cancellano mai,
+# né fra loro né da una PR: `gate` su `main` resta, perché vede le combinazioni
+# di merge che nessuna PR ha provato.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Le action stanno a SHA completo perché un tag si può ripuntare (review 07/10, O36):
+# il tag è nel commento a fine riga e gli aggiornamenti li propone Dependabot
+# (`.github/dependabot.yml`), non si cambiano a mano.
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Node lo dichiara il REPO, non questo file: `.nvmrc` è la verità unica,
+      # letta anche da `engines` in package.json e da chi usa nvm in locale.
+      # Tre ambienti, una dichiarazione, un posto da cambiare.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Installa (dal lock, esatto)
+        run: npm ci
+
+      # 0) Audit delle dipendenze di PRODUZIONE: una vulnerabilità high o critical
+      #    in ciò che finisce nel bundle ferma il gate. Le dipendenze di sviluppo
+      #    non entrano qui (non vanno in produzione): si controllano con
+      #    `npm run audit`. Nessuna pipe: l'exit è quello di npm.
+      - name: Audit dipendenze di produzione
+        run: npm audit --omit=dev --audit-level=high
+
+      # 1) Typecheck. `tsc -b`, MAI `--noEmit`: il tsconfig è solution-style e
+      #    `--noEmit` non controlla NESSUN file, uscendo 0 su codice rotto.
+      #    Nessuna pipe: l'exit lo legge la shell dal comando nudo. Attraverso
+      #    una pipe leggeremmo l'exit di `tail`, che esce 0 sempre (CLAUDE.md,
+      #    "Falsi verdi").
+      - name: Typecheck
+        run: npx tsc -b
+
+      # 1b) Lint. Su main esce 0 errori dalla PR "lint-gate": da qui un errore
+      #     nuovo ferma il gate invece di accumularsi. I warning non fermano
+      #     (`eslint .` esce 1 solo sugli errori). Comando nudo, nessuna pipe.
+      - name: Lint
+        run: npm run lint
+
+      # 2) Build PRIMA dei test. L'ORDINE È LEGGE, non preferenza:
+      #    `src/__tests__/bundleMarkers.test.ts` si auto-skippa se `dist/` manca
+      #    o è più vecchia dei sorgenti. Invertendo i due step si skipperebbe in
+      #    silenzio, e la CI direbbe verde senza aver mai guardato il bundle —
+      #    che è esattamente il bug che quel test esiste per prendere.
+      #
+      #    Le env sono FITTIZIE APPOSTA, e non vanno "corrette" coi secrets.
+      #    `assertSupabaseEnv` (vite.config.ts, presidio della #15) controlla che
+      #    le variabili CI SIANO e non siano vuote, non che siano valide: senza,
+      #    Vite le sostituisce con `undefined`, la guardia in `lib/supabase.ts` si
+      #    ripiega in un ramo statico e il bundle esce SENZA L'APPLICAZIONE
+      #    (~399 kB) con exit 0 — pagina bianca e build verde.
+      #    La CI non deploya e non parla con Supabase: qui la verità è che questi
+      #    valori non servono, e dei dummy la dicono. Metterci dei secrets darebbe
+      #    la stessa identica copertura e in più porterebbe una chiave vera dentro
+      #    un artefatto di CI: costo senza contropartita.
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://ci.invalid
+          VITE_SUPABASE_ANON_KEY: ci-dummy
+
+      # 3) Test, con la dist appena costruita.
+      - name: Test
+        run: npx vitest run --reporter=json --outputFile=vitest-report.json
+
+      # 4) Il conteggio è ATTESO, non osservato. vitest esce 0 anche se una suite
+      #    intera smette di essere raccolta o se qualcuno aggiunge uno `skipIf`:
+      #    senza questo passo, un test che sparisce non fa rumore. Qui anche gli
+      #    skip sono dichiarati (le golden, `numPendingTests`) — se fossero di più
+      #    qualcuno ha spento dell'altro, se diventassero 0 qualcuno ha committato
+      #    i prezzi del cliente.
+      - name: Verifica conteggio
+        run: node scripts/verifica-conteggio-ci.mjs vitest-report.json
+
+  # Analisi SonarQube Cloud. Job SEPARATO e non un flag sul run di `gate`: il
+  # conteggio asserito lassù resta intoccato da `--coverage`, e Sonar parte solo
+  # se il gate è verde.
+  #
+  # Niente build qui: `bundleMarkers.test.ts` si auto-skippa senza `dist/`, ed è
+  # atteso — guarda il bundle, non la logica di src, quindi non sposta la
+  # coverage. Le golden restano skippate come in `gate`: la coverage è quella
+  # misurabile su clone pulito.
+  sonar:
+    needs: gate
+    # Le PR di Dependabot non vedono i secret di Actions: senza `SONAR_TOKEN` lo
+    # step di analisi fallirebbe sempre. Un bump di action non ha nulla da dire a Sonar.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Storia completa: Sonar usa il blame per distinguere il codice nuovo
+      # (New Code = reference branch main).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Installa (dal lock, esatto)
+        run: npm ci
+
+      # Il reporter da CLI SOSTITUISCE quelli della config: `lcov` scrive il file
+      # per Sonar, `text-summary` stampa la % nel log per confrontarla col run.
+      - name: Test con coverage
+        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text-summary
+
+      - name: Analisi SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

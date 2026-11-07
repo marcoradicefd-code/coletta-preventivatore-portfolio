@@ -1,0 +1,42 @@
+-- ============================================================================
+-- 0002_revoke_security_definer_execute.sql
+--
+-- Date: 2026-10-06
+--
+-- Closes Supabase Database Advisor lints:
+--   0028_anon_security_definer_function_executable
+--   0029_authenticated_security_definer_function_executable
+--
+-- Functions (all SECURITY DEFINER, owner postgres, search_path pinned):
+--   - public.check_email_domain() -> trigger `enforce_email_domain` on auth.users
+--   - public.handle_new_user()    -> trigger `on_auth_user_created` on auth.users
+--   - public.rls_auto_enable()    -> event trigger `ensure_rls` (ddl_command_end).
+--     Created by Supabase (automatic RLS), not by us: versioned here only for
+--     this revoke.
+--
+-- They are meant to run as triggers only. Live ACL before this migration:
+--   {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+-- so anyone holding the public anon key could call them as SECURITY DEFINER
+-- through POST /rest/v1/rpc/<name>.
+--
+-- Why PUBLIC is revoked too: the empty grantee `=X` is PUBLIC, Postgres'
+-- global default EXECUTE on every new function. Revoking only anon and
+-- authenticated would leave both roles able to call the function through
+-- PUBLIC, and both lints would keep firing.
+--
+-- Not touched: postgres (owner) and service_role keep their explicit grants.
+--
+-- Triggers keep working: EXECUTE on a trigger function is checked only at
+-- CREATE TRIGGER time (src/backend/commands/trigger.c:694, CreateTrigger ->
+-- object_aclcheck ACL_EXECUTE), never when the trigger fires
+-- (trigger.c:2318, ExecCallTriggerFunc -> fmgr_info + FunctionCallInvoke, no
+-- ACL check; event triggers likewise, event_trigger.c). Losing EXECUTE via
+-- PUBLIC therefore does not stop the auth.users triggers or `ensure_rls`.
+--
+-- Idempotent: revoking a privilege that is not held is a no-op, not an
+-- error, so this file can be re-run safely.
+-- ============================================================================
+
+revoke execute on function public.check_email_domain() from anon, authenticated, public;
+revoke execute on function public.handle_new_user()    from anon, authenticated, public;
+revoke execute on function public.rls_auto_enable()    from anon, authenticated, public;

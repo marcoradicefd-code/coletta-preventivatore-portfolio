@@ -1,0 +1,27 @@
+# Dependabot per le action di GitHub (review 07/10, O36). Solo `github-actions`:
+# le dipendenze npm sono fuori da questo file.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # Da `/` Dependabot legge `.github/workflows/`.
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Rome
+    # Una release deve avere almeno 7 giorni prima di essere proposta: è la rete
+    # contro un tag compromesso appena rilasciato. Non vale per gli avvisi di sicurezza.
+    cooldown:
+      default-days: 7
+    # Minor e patch in una PR sola; i major restano PR singole, perché un major
+    # di action cambia il runtime Node e va guardato da solo.
+    groups:
+      action-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
