@@ -1,3 +1,5 @@
+[English](README.en.md) · **Italiano**
+
 # Preventivatore Coletta
 
 Web app per **Coletta Ebanisteria Italiana** (Bari): chi lavora in azienda compone un preventivo su cinque sezioni — **Cucine, Arredi, Porte, Progetto a valore, Gres** — e lo stampa in un PDF pronto per il cliente.
